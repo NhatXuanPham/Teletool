@@ -1,0 +1,245 @@
+{
+                    "name": "Telegram to Threads Auto Post",
+                    "nodes": [
+                                        {
+                                                            "parameters": {
+                                                                                "httpMethod": "POST",
+                                                                                "path": "telegram-to-threads",
+                                                                                "options": {}
+                                                            },
+                                                            "id": "webhook-trigger",
+                                                            "name": "Webhook (Receive from Telethon)",
+                                                            "type": "n8n-nodes-base.webhook",
+                                                            "typeVersion": 2,
+                                                            "position": [
+                                                                                200,
+                                                                                300
+                                                            ],
+                                                            "webhookId": "tele-to-threads-trigger"
+                                        },
+                                        {
+                                                            "parameters": {
+                                                                                "method": "POST",
+                                                                                "url": "https://api.imgur.com/3/image",
+                                                                                "sendHeaders": true,
+                                                                                "headerParameters": {
+                                                                                                    "parameters": [
+                                                                                                                        {
+                                                                                                                                            "name": "Authorization",
+                                                                                                                                            "value": "Client-ID YOUR_IMGUR_CLIENT_ID"
+                                                                                                                        }
+                                                                                                    ]
+                                                                                },
+                                                                                "sendBinaryData": true,
+                                                                                "binaryPropertyName": "photo",
+                                                                                "options": {}
+                                                            },
+                                                            "id": "upload-public-image",
+                                                            "name": "Upload Image to Imgur (Public URL)",
+                                                            "type": "n8n-nodes-base.httpRequest",
+                                                            "typeVersion": 4.2,
+                                                            "position": [
+                                                                                440,
+                                                                                200
+                                                            ]
+                                        },
+                                        {
+                                                            "parameters": {
+                                                                                "model": "gpt-4o-mini",
+                                                                                "messages": {
+                                                                                                    "values": [
+                                                                                                                        {
+                                                                                                                                            "role": "system",
+                                                                                                                                            "content": "Bạn là chuyên gia sáng tạo nội dung mạng xã hội. Dựa vào nội dung gốc nhận được từ tin nhắn, hãy viết một caption lôi cuốn, văn phong tự nhiên, phù hợp với phong cách ngắn gọn trên Threads. Kèm theo 2-3 hashtag ngắn gọn ở cuối. Chỉ trả về nội dung caption, không giải thích gì thêm."
+                                                                                                                        },
+                                                                                                                        {
+                                                                                                                                            "role": "user",
+                                                                                                                                            "content": "={{ $('Webhook (Receive from Telethon)').item.json.body.caption_goc || 'Chia sẻ khoảnh khắc thú vị này cùng mọi người!' }}"
+                                                                                                                        }
+                                                                                                    ]
+                                                                                },
+                                                                                "options": {
+                                                                                                    "temperature": 0.7
+                                                                                }
+                                                            },
+                                                            "id": "generate-caption-ai",
+                                                            "name": "Generate Caption (AI)",
+                                                            "type": "@n8n/n8n-nodes-langchain.openAi",
+                                                            "typeVersion": 1.4,
+                                                            "position": [
+                                                                                440,
+                                                                                420
+                                                            ]
+                                        },
+                                        {
+                                                            "parameters": {
+                                                                                "mode": "combine",
+                                                                                "combineBy": "combineAll",
+                                                                                "options": {}
+                                                            },
+                                                            "id": "merge-data",
+                                                            "name": "Merge Image & Caption",
+                                                            "type": "n8n-nodes-base.merge",
+                                                            "typeVersion": 3,
+                                                            "position": [
+                                                                                680,
+                                                                                300
+                                                            ]
+                                        },
+                                        {
+                                                            "parameters": {
+                                                                                "method": "POST",
+                                                                                "url": "https://graph.threads.net/v1.0/me/threads",
+                                                                                "sendQuery": true,
+                                                                                "queryParameters": {
+                                                                                                    "parameters": [
+                                                                                                                        {
+                                                                                                                                            "name": "media_type",
+                                                                                                                                            "value": "IMAGE"
+                                                                                                                        },
+                                                                                                                        {
+                                                                                                                                            "name": "image_url",
+                                                                                                                                            "value": "={{ $('Upload Image to Imgur (Public URL)').item.json.data.link }}"
+                                                                                                                        },
+                                                                                                                        {
+                                                                                                                                            "name": "text",
+                                                                                                                                            "value": "={{ $('Generate Caption (AI)').item.json.message.content }}"
+                                                                                                                        },
+                                                                                                                        {
+                                                                                                                                            "name": "access_token",
+                                                                                                                                            "value": "={{ $env.THREADS_ACCESS_TOKEN }}"
+                                                                                                                        }
+                                                                                                    ]
+                                                                                },
+                                                                                "options": {}
+                                                            },
+                                                            "id": "create-threads-container",
+                                                            "name": "Threads: Step 1 (Create Container)",
+                                                            "type": "n8n-nodes-base.httpRequest",
+                                                            "typeVersion": 4.2,
+                                                            "position": [
+                                                                                900,
+                                                                                300
+                                                            ]
+                                        },
+                                        {
+                                                            "parameters": {
+                                                                                "amount": 10,
+                                                                                "unit": "seconds"
+                                                            },
+                                                            "id": "wait-for-processing",
+                                                            "name": "Wait for Media Processing",
+                                                            "type": "n8n-nodes-base.wait",
+                                                            "typeVersion": 1.1,
+                                                            "position": [
+                                                                                1120,
+                                                                                300
+                                                            ],
+                                                            "webhookId": "threads-wait-step"
+                                        },
+                                        {
+                                                            "parameters": {
+                                                                                "method": "POST",
+                                                                                "url": "https://graph.threads.net/v1.0/me/threads_publish",
+                                                                                "sendQuery": true,
+                                                                                "queryParameters": {
+                                                                                                    "parameters": [
+                                                                                                                        {
+                                                                                                                                            "name": "creation_id",
+                                                                                                                                            "value": "={{ $('Threads: Step 1 (Create Container)').item.json.id }}"
+                                                                                                                        },
+                                                                                                                        {
+                                                                                                                                            "name": "access_token",
+                                                                                                                                            "value": "={{ $env.THREADS_ACCESS_TOKEN }}"
+                                                                                                                        }
+                                                                                                    ]
+                                                                                },
+                                                                                "options": {}
+                                                            },
+                                                            "id": "publish-threads-container",
+                                                            "name": "Threads: Step 2 (Publish Post)",
+                                                            "type": "n8n-nodes-base.httpRequest",
+                                                            "typeVersion": 4.2,
+                                                            "position": [
+                                                                                1340,
+                                                                                300
+                                                            ]
+                                        }
+                    ],
+                    "connections": {
+                                        "Webhook (Receive from Telethon)": {
+                                                            "main": [
+                                                                                [
+                                                                                                    {
+                                                                                                                        "node": "Upload Image to Imgur (Public URL)",
+                                                                                                                        "type": "main",
+                                                                                                                        "index": 0
+                                                                                                    },
+                                                                                                    {
+                                                                                                                        "node": "Generate Caption (AI)",
+                                                                                                                        "type": "main",
+                                                                                                                        "index": 0
+                                                                                                    }
+                                                                                ]
+                                                            ]
+                                        },
+                                        "Upload Image to Imgur (Public URL)": {
+                                                            "main": [
+                                                                                [
+                                                                                                    {
+                                                                                                                        "node": "Merge Image & Caption",
+                                                                                                                        "type": "main",
+                                                                                                                        "index": 0
+                                                                                                    }
+                                                                                ]
+                                                            ]
+                                        },
+                                        "Generate Caption (AI)": {
+                                                            "main": [
+                                                                                [
+                                                                                                    {
+                                                                                                                        "node": "Merge Image & Caption",
+                                                                                                                        "type": "main",
+                                                                                                                        "index": 1
+                                                                                                    }
+                                                                                ]
+                                                            ]
+                                        },
+                                        "Merge Image & Caption": {
+                                                            "main": [
+                                                                                [
+                                                                                                    {
+                                                                                                                        "node": "Threads: Step 1 (Create Container)",
+                                                                                                                        "type": "main",
+                                                                                                                        "index": 0
+                                                                                                    }
+                                                                                ]
+                                                            ]
+                                        },
+                                        "Threads: Step 1 (Create Container)": {
+                                                            "main": [
+                                                                                [
+                                                                                                    {
+                                                                                                                        "node": "Wait for Media Processing",
+                                                                                                                        "type": "main",
+                                                                                                                        "index": 0
+                                                                                                    }
+                                                                                ]
+                                                            ]
+                                        },
+                                        "Wait for Media Processing": {
+                                                            "main": [
+                                                                                [
+                                                                                                    {
+                                                                                                                        "node": "Threads: Step 2 (Publish Post)",
+                                                                                                                        "type": "main",
+                                                                                                                        "index": 0
+                                                                                                    }
+                                                                                ]
+                                                            ]
+                                        }
+                    },
+                    "settings": {
+                                        "executionOrder": "v1"
+                    }
+}

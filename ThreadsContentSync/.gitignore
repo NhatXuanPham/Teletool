@@ -1,0 +1,20 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Environment Variables & Secrets
+.env
+
+# Telethon session files
+*.session
+*.session-journal
+
+# Temp media folder
+temp_images/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+

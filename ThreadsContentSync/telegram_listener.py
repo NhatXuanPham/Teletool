@@ -27,7 +27,7 @@ if not API_ID_RAW or not API_HASH or not TARGET_CHAT_ID_RAW:
     exit(1)
 
 API_ID = int(API_ID_RAW)
-TARGET_CHAT_ID = int(TARGET_CHAT_ID_RAW)
+TARGET_CHAT_IDS = [int(cid.strip()) for cid in TARGET_CHAT_ID_RAW.strip('[]').split(',') if cid.strip()]
 
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 message_queue = asyncio.Queue()
@@ -64,7 +64,7 @@ async def queue_worker():
             await asyncio.sleep(QUEUE_DELAY)
 
 
-@client.on(events.NewMessage(chats=TARGET_CHAT_ID))
+@client.on(events.NewMessage(chats=TARGET_CHAT_IDS))
 async def handle_message(event):
     message = event.message
 
@@ -96,7 +96,7 @@ async def handle_message(event):
 
 async def main():
     asyncio.create_task(queue_worker())
-    print(f"Listening on chat {TARGET_CHAT_ID} -> {N8N_WEBHOOK_URL} (Delay: {QUEUE_DELAY}s)")
+    print(f"Listening on chats {TARGET_CHAT_IDS} -> {N8N_WEBHOOK_URL} (Delay: {QUEUE_DELAY}s)")
     await client.run_until_disconnected()
 
 

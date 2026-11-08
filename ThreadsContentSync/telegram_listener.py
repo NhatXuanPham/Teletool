@@ -1,4 +1,6 @@
 import os
+import sys
+import shutil
 import asyncio
 import base64
 from collections import deque
@@ -6,21 +8,27 @@ import requests
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 
-load_dotenv()
+load_dotenv(override=True)
 
 API_ID_RAW = os.getenv('TELEGRAM_API_ID', '').strip()
 API_HASH = os.getenv('TELEGRAM_API_HASH', '').strip()
 TARGET_CHAT_ID_RAW = os.getenv('TARGET_CHAT_ID', '').strip()
 N8N_WEBHOOK_URL = os.getenv('N8N_WEBHOOK_URL', 'http://localhost:5678/webhook/telegram-to-threads').strip()
+SESSION_NAME = os.getenv('SESSION_NAME', 'session_userbot').strip() or 'session_userbot'
+
 if os.getenv('IN_DOCKER') == 'true':
     N8N_WEBHOOK_URL = N8N_WEBHOOK_URL.replace('://localhost', '://host.docker.internal').replace('://127.0.0.1', '://host.docker.internal')
-SESSION_NAME = os.getenv('SESSION_NAME', 'session_userbot').strip() or 'session_userbot'
+    src_session = f"{SESSION_NAME}.session"
+    tmp_session = f"/tmp/{SESSION_NAME}.session"
+    if os.path.exists(src_session):
+        shutil.copy2(src_session, tmp_session)
+        SESSION_NAME = f"/tmp/{SESSION_NAME}"
 
 REQUIRE_PHOTO = os.getenv('REQUIRE_PHOTO', 'true').strip().lower() in ('true', '1', 'yes')
 MIN_LENGTH = int(os.getenv('MIN_LENGTH', '0').strip() or '0')
 QUEUE_DELAY = int(os.getenv('QUEUE_DELAY', '10').strip() or '10')
-INCLUDE_KEYWORDS = [k.strip().lower() for k in os.getenv('INCLUDE_KEYWORDS', '').split(',') if k.strip()]
-EXCLUDE_KEYWORDS = [k.strip().lower() for k in os.getenv('EXCLUDE_KEYWORDS', '').split(',') if k.strip()]
+INCLUDE_KEYWORDS = [k.strip().lower() for k in os.getenv('INCLUDE_KEYWORDS', '').strip('[]').split(',') if k.strip()]
+EXCLUDE_KEYWORDS = [k.strip().lower() for k in os.getenv('EXCLUDE_KEYWORDS', '').strip('[]').split(',') if k.strip()]
 
 if not API_ID_RAW or not API_HASH or not TARGET_CHAT_ID_RAW:
     print("[!] Missing required environment variables: TELEGRAM_API_ID, TELEGRAM_API_HASH, TARGET_CHAT_ID")
@@ -32,6 +40,20 @@ TARGET_CHAT_IDS = [int(cid.strip()) for cid in TARGET_CHAT_ID_RAW.strip('[]').sp
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 message_queue = asyncio.Queue()
 seen_albums = deque(maxlen=500)
+
+
+async def env_watcher():
+    env_path = '.env'
+    last_mtime = os.path.getmtime(env_path) if os.path.exists(env_path) else None
+    while True:
+        await asyncio.sleep(2)
+        if os.path.exists(env_path):
+            current_mtime = os.path.getmtime(env_path)
+            if last_mtime is not None and current_mtime != last_mtime:
+                print("[*] Detected .env change! Reloading...")
+                await client.disconnect()
+                os._exit(0)
+            last_mtime = current_mtime
 
 
 async def queue_worker():
@@ -95,6 +117,7 @@ async def handle_message(event):
 
 
 async def main():
+    asyncio.create_task(env_watcher())
     asyncio.create_task(queue_worker())
     print(f"Listening on chats {TARGET_CHAT_IDS} -> {N8N_WEBHOOK_URL} (Delay: {QUEUE_DELAY}s)")
     await client.run_until_disconnected()

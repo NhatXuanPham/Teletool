@@ -1,245 +1,907 @@
 {
-                    "name": "Telegram to Threads Auto Post",
-                    "nodes": [
-                                        {
-                                                            "parameters": {
-                                                                                "httpMethod": "POST",
-                                                                                "path": "telegram-to-threads",
-                                                                                "options": {}
-                                                            },
-                                                            "id": "webhook-trigger",
-                                                            "name": "Webhook (Receive from Telethon)",
-                                                            "type": "n8n-nodes-base.webhook",
-                                                            "typeVersion": 2,
-                                                            "position": [
-                                                                                200,
-                                                                                300
-                                                            ],
-                                                            "webhookId": "tele-to-threads-trigger"
-                                        },
-                                        {
-                                                            "parameters": {
-                                                                                "method": "POST",
-                                                                                "url": "https://api.imgur.com/3/image",
-                                                                                "sendHeaders": true,
-                                                                                "headerParameters": {
-                                                                                                    "parameters": [
-                                                                                                                        {
-                                                                                                                                            "name": "Authorization",
-                                                                                                                                            "value": "Client-ID YOUR_IMGUR_CLIENT_ID"
-                                                                                                                        }
-                                                                                                    ]
-                                                                                },
-                                                                                "sendBinaryData": true,
-                                                                                "binaryPropertyName": "photo",
-                                                                                "options": {}
-                                                            },
-                                                            "id": "upload-public-image",
-                                                            "name": "Upload Image to Imgur (Public URL)",
-                                                            "type": "n8n-nodes-base.httpRequest",
-                                                            "typeVersion": 4.2,
-                                                            "position": [
-                                                                                440,
-                                                                                200
-                                                            ]
-                                        },
-                                        {
-                                                            "parameters": {
-                                                                                "model": "gpt-4o-mini",
-                                                                                "messages": {
-                                                                                                    "values": [
-                                                                                                                        {
-                                                                                                                                            "role": "system",
-                                                                                                                                            "content": "Bạn là chuyên gia sáng tạo nội dung mạng xã hội. Dựa vào nội dung gốc nhận được từ tin nhắn, hãy viết một caption lôi cuốn, văn phong tự nhiên, phù hợp với phong cách ngắn gọn trên Threads. Kèm theo 2-3 hashtag ngắn gọn ở cuối. Chỉ trả về nội dung caption, không giải thích gì thêm."
-                                                                                                                        },
-                                                                                                                        {
-                                                                                                                                            "role": "user",
-                                                                                                                                            "content": "={{ $('Webhook (Receive from Telethon)').item.json.body.caption_goc || 'Chia sẻ khoảnh khắc thú vị này cùng mọi người!' }}"
-                                                                                                                        }
-                                                                                                    ]
-                                                                                },
-                                                                                "options": {
-                                                                                                    "temperature": 0.7
-                                                                                }
-                                                            },
-                                                            "id": "generate-caption-ai",
-                                                            "name": "Generate Caption (AI)",
-                                                            "type": "@n8n/n8n-nodes-langchain.openAi",
-                                                            "typeVersion": 1.4,
-                                                            "position": [
-                                                                                440,
-                                                                                420
-                                                            ]
-                                        },
-                                        {
-                                                            "parameters": {
-                                                                                "mode": "combine",
-                                                                                "combineBy": "combineAll",
-                                                                                "options": {}
-                                                            },
-                                                            "id": "merge-data",
-                                                            "name": "Merge Image & Caption",
-                                                            "type": "n8n-nodes-base.merge",
-                                                            "typeVersion": 3,
-                                                            "position": [
-                                                                                680,
-                                                                                300
-                                                            ]
-                                        },
-                                        {
-                                                            "parameters": {
-                                                                                "method": "POST",
-                                                                                "url": "https://graph.threads.net/v1.0/me/threads",
-                                                                                "sendQuery": true,
-                                                                                "queryParameters": {
-                                                                                                    "parameters": [
-                                                                                                                        {
-                                                                                                                                            "name": "media_type",
-                                                                                                                                            "value": "IMAGE"
-                                                                                                                        },
-                                                                                                                        {
-                                                                                                                                            "name": "image_url",
-                                                                                                                                            "value": "={{ $('Upload Image to Imgur (Public URL)').item.json.data.link }}"
-                                                                                                                        },
-                                                                                                                        {
-                                                                                                                                            "name": "text",
-                                                                                                                                            "value": "={{ $('Generate Caption (AI)').item.json.message.content }}"
-                                                                                                                        },
-                                                                                                                        {
-                                                                                                                                            "name": "access_token",
-                                                                                                                                            "value": "={{ $env.THREADS_ACCESS_TOKEN }}"
-                                                                                                                        }
-                                                                                                    ]
-                                                                                },
-                                                                                "options": {}
-                                                            },
-                                                            "id": "create-threads-container",
-                                                            "name": "Threads: Step 1 (Create Container)",
-                                                            "type": "n8n-nodes-base.httpRequest",
-                                                            "typeVersion": 4.2,
-                                                            "position": [
-                                                                                900,
-                                                                                300
-                                                            ]
-                                        },
-                                        {
-                                                            "parameters": {
-                                                                                "amount": 10,
-                                                                                "unit": "seconds"
-                                                            },
-                                                            "id": "wait-for-processing",
-                                                            "name": "Wait for Media Processing",
-                                                            "type": "n8n-nodes-base.wait",
-                                                            "typeVersion": 1.1,
-                                                            "position": [
-                                                                                1120,
-                                                                                300
-                                                            ],
-                                                            "webhookId": "threads-wait-step"
-                                        },
-                                        {
-                                                            "parameters": {
-                                                                                "method": "POST",
-                                                                                "url": "https://graph.threads.net/v1.0/me/threads_publish",
-                                                                                "sendQuery": true,
-                                                                                "queryParameters": {
-                                                                                                    "parameters": [
-                                                                                                                        {
-                                                                                                                                            "name": "creation_id",
-                                                                                                                                            "value": "={{ $('Threads: Step 1 (Create Container)').item.json.id }}"
-                                                                                                                        },
-                                                                                                                        {
-                                                                                                                                            "name": "access_token",
-                                                                                                                                            "value": "={{ $env.THREADS_ACCESS_TOKEN }}"
-                                                                                                                        }
-                                                                                                    ]
-                                                                                },
-                                                                                "options": {}
-                                                            },
-                                                            "id": "publish-threads-container",
-                                                            "name": "Threads: Step 2 (Publish Post)",
-                                                            "type": "n8n-nodes-base.httpRequest",
-                                                            "typeVersion": 4.2,
-                                                            "position": [
-                                                                                1340,
-                                                                                300
-                                                            ]
-                                        }
-                    ],
-                    "connections": {
-                                        "Webhook (Receive from Telethon)": {
-                                                            "main": [
-                                                                                [
-                                                                                                    {
-                                                                                                                        "node": "Upload Image to Imgur (Public URL)",
-                                                                                                                        "type": "main",
-                                                                                                                        "index": 0
-                                                                                                    },
-                                                                                                    {
-                                                                                                                        "node": "Generate Caption (AI)",
-                                                                                                                        "type": "main",
-                                                                                                                        "index": 0
-                                                                                                    }
-                                                                                ]
-                                                            ]
-                                        },
-                                        "Upload Image to Imgur (Public URL)": {
-                                                            "main": [
-                                                                                [
-                                                                                                    {
-                                                                                                                        "node": "Merge Image & Caption",
-                                                                                                                        "type": "main",
-                                                                                                                        "index": 0
-                                                                                                    }
-                                                                                ]
-                                                            ]
-                                        },
-                                        "Generate Caption (AI)": {
-                                                            "main": [
-                                                                                [
-                                                                                                    {
-                                                                                                                        "node": "Merge Image & Caption",
-                                                                                                                        "type": "main",
-                                                                                                                        "index": 1
-                                                                                                    }
-                                                                                ]
-                                                            ]
-                                        },
-                                        "Merge Image & Caption": {
-                                                            "main": [
-                                                                                [
-                                                                                                    {
-                                                                                                                        "node": "Threads: Step 1 (Create Container)",
-                                                                                                                        "type": "main",
-                                                                                                                        "index": 0
-                                                                                                    }
-                                                                                ]
-                                                            ]
-                                        },
-                                        "Threads: Step 1 (Create Container)": {
-                                                            "main": [
-                                                                                [
-                                                                                                    {
-                                                                                                                        "node": "Wait for Media Processing",
-                                                                                                                        "type": "main",
-                                                                                                                        "index": 0
-                                                                                                    }
-                                                                                ]
-                                                            ]
-                                        },
-                                        "Wait for Media Processing": {
-                                                            "main": [
-                                                                                [
-                                                                                                    {
-                                                                                                                        "node": "Threads: Step 2 (Publish Post)",
-                                                                                                                        "type": "main",
-                                                                                                                        "index": 0
-                                                                                                    }
-                                                                                ]
-                                                            ]
-                                        }
-                    },
-                    "settings": {
-                                        "executionOrder": "v1"
+  "name": "Telegram to Multi-Threads",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telegram-to-threads",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        120,
+        420
+      ],
+      "webhookId": "tele-to-threads-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const accounts = [\n  {\n    key: 'acc_1',\n    name: 'Account 1',\n    lang: 'Korean (ko-KR)',\n    tone: 'Trendy, casual native Korean Threads user'\n  },\n  {\n    key: 'acc_2',\n    name: 'Account 2',\n    lang: 'Korean (ko-KR)',\n    tone: 'Witty, humorous native Korean netizen, completely different wording from acc_1'\n  },\n  {\n    key: 'acc_3',\n    name: 'Account 3',\n    lang: 'Korean (ko-KR)',\n    tone: 'Short, punchy, curious reaction style in natural Korean'\n  },\n  {\n    key: 'acc_4',\n    name: 'Account 4',\n    lang: 'Traditional Chinese - Taiwan (zh-TW)',\n    tone: 'Natural Taiwanese Threads user (authentic Taiwan phrasing and slang)'\n  },\n  {\n    key: 'acc_5',\n    name: 'Account 5',\n    lang: 'Traditional Chinese - Taiwan (zh-TW)',\n    tone: 'Relatable, engaging Taiwanese netizen, completely different wording from acc_4'\n  }\n];\n\nreturn [{ json: { accounts } }];"
+      },
+      "id": "account-list",
+      "name": "Account List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const accounts = $input.first().json.accounts || [];\n\nconst accountRules = accounts\n  .map((a, idx) => `${idx + 1}. \"${a.key}\" (${a.name}): Language=${a.lang}, Tone=${a.tone}`)\n  .join('\\n');\n\nconst expectedKeys = accounts.reduce((obj, a) => {\n  obj[a.key] = `Unique ${a.lang} caption`;\n  return obj;\n}, {});\n\nreturn [\n  {\n    json: {\n      accounts,\n      ai_account_rules: accountRules,\n      ai_expected_json: JSON.stringify(expectedKeys)\n    }\n  }\n];"
+      },
+      "id": "build-ai-prompt",
+      "name": "Build AI Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://freeimage.host/api/1/upload",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "6d207e02198a847aa98d0a2a901485a5"
+            },
+            {
+              "name": "action",
+              "value": "upload"
+            },
+            {
+              "name": "source",
+              "value": "={{ $('Webhook').item.json.body.image_base64 }}"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "upload-base64-public",
+      "name": "Upload Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "system_instruction",
+              "value": "={{ { parts: [{ text: 'Read all details and text in the image. Write 5 COMPLETELY DIFFERENT, unique Threads captions (<380 chars each, with 2-3 native hashtags) so no two accounts sound alike:\\n' + $('Build AI Prompt').item.json.ai_account_rules + '\\nReturn pure JSON matching: ' + $('Build AI Prompt').item.json.ai_expected_json }] } }}"
+            },
+            {
+              "name": "contents",
+              "value": "={{ [{ parts: [ { text: $('Webhook').item.json.body.original_caption ? 'Original caption: ' + $('Webhook').item.json.body.original_caption : 'Analyze this image and generate 5 unique JSON captions.' }, ...($('Webhook').item.json.body.image_base64 ? [{ inline_data: { mime_type: 'image/jpeg', data: $('Webhook').item.json.body.image_base64 } }] : []) ] }] }}"
+            },
+            {
+              "name": "generationConfig",
+              "value": "={{ { maxOutputTokens: 1500, temperature: 0.8, responseMimeType: 'application/json' } }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "gemini-ai-active",
+      "name": "Gemini AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1020,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "gpt-4o-mini"
+            },
+            {
+              "name": "response_format",
+              "value": "={{ { type: 'json_object' } }}"
+            },
+            {
+              "name": "messages",
+              "value": "={{ [ { role: 'system', content: 'Write 5 COMPLETELY DIFFERENT Threads captions (<380 chars, 2-3 native hashtags) for each account:\\n' + $('Build AI Prompt').item.json.ai_account_rules + '\\nReturn JSON: ' + $('Build AI Prompt').item.json.ai_expected_json }, { role: 'user', content: [ { type: 'text', text: $('Webhook').item.json.body.original_caption || 'Analyze image and generate 5 unique JSON captions.' }, ...($('Webhook').item.json.body.image_base64 ? [{ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + $('Webhook').item.json.body.image_base64 } }] : []) ] } ] }}"
+            },
+            {
+              "name": "max_tokens",
+              "value": "={{ 1500 }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "openai-vision-ready",
+      "name": "OpenAI Vision (Standby)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1020,
+        680
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawAiText =\n  $input.first().json.candidates?.[0]?.content?.parts?.[0]?.text ||\n  $input.first().json.choices?.[0]?.message?.content ||\n  '{}';\n\nlet parsed = {};\ntry {\n  parsed = JSON.parse(rawAiText.replace(/```json|```/g, '').trim());\n} catch (e) {\n  parsed = {};\n}\n\nconst imageUrl = $('Upload Image').first().json.image?.url || '';\nconst fallback = $('Webhook').first().json.body.original_caption || '';\nconst accounts = $('Account List').first().json.accounts || [];\n\nreturn accounts.map((acc) => ({\n  json: {\n    account_key: acc.key,\n    account_name: acc.name,\n    lang: acc.lang,\n    media_type: imageUrl ? 'IMAGE' : 'TEXT',\n    image_url: imageUrl,\n    caption: (parsed[acc.key] || fallback).trim().slice(0, 495)\n  }\n}));"
+      },
+      "id": "split-ai-items",
+      "name": "Build Account Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-acc-1",
+                    "leftValue": "={{ $json.account_key }}",
+                    "rightValue": "acc_1",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
                     }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "acc_1"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-acc-2",
+                    "leftValue": "={{ $json.account_key }}",
+                    "rightValue": "acc_2",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "acc_2"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-acc-3",
+                    "leftValue": "={{ $json.account_key }}",
+                    "rightValue": "acc_3",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "acc_3"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-acc-4",
+                    "leftValue": "={{ $json.account_key }}",
+                    "rightValue": "acc_4",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "acc_4"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-acc-5",
+                    "leftValue": "={{ $json.account_key }}",
+                    "rightValue": "acc_5",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "acc_5"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-account-router",
+      "name": "Switch Account",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1500,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/me/threads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "={{ $json.media_type }}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $json.image_url }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.caption }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "acc1-create-container",
+      "name": "Acc 1: Create Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 6,
+        "unit": "seconds"
+      },
+      "id": "acc1-wait",
+      "name": "Acc 1: Wait 6s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2020,
+        60
+      ],
+      "webhookId": "threads-wait-acc1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/me/threads_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "acc1-publish",
+      "name": "Acc 1: Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2260,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/me/threads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "={{ $json.media_type }}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $json.image_url }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.caption }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "acc2-create-container",
+      "name": "Acc 2: Create Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 6,
+        "unit": "seconds"
+      },
+      "id": "acc2-wait",
+      "name": "Acc 2: Wait 6s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2020,
+        240
+      ],
+      "webhookId": "threads-wait-acc2"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/me/threads_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "acc2-publish",
+      "name": "Acc 2: Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2260,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/me/threads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "={{ $json.media_type }}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $json.image_url }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.caption }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "acc3-create-container",
+      "name": "Acc 3: Create Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 6,
+        "unit": "seconds"
+      },
+      "id": "acc3-wait",
+      "name": "Acc 3: Wait 6s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2020,
+        420
+      ],
+      "webhookId": "threads-wait-acc3"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/me/threads_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "acc3-publish",
+      "name": "Acc 3: Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2260,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/me/threads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "={{ $json.media_type }}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $json.image_url }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.caption }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "acc4-create-container",
+      "name": "Acc 4: Create Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 6,
+        "unit": "seconds"
+      },
+      "id": "acc4-wait",
+      "name": "Acc 4: Wait 6s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2020,
+        600
+      ],
+      "webhookId": "threads-wait-acc4"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/me/threads_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "acc4-publish",
+      "name": "Acc 4: Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2260,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/me/threads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "={{ $json.media_type }}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $json.image_url }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.caption }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "acc5-create-container",
+      "name": "Acc 5: Create Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        780
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 6,
+        "unit": "seconds"
+      },
+      "id": "acc5-wait",
+      "name": "Acc 5: Wait 6s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        2020,
+        780
+      ],
+      "webhookId": "threads-wait-acc5"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/me/threads_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "acc5-publish",
+      "name": "Acc 5: Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2260,
+        780
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Account List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Account List": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompt": {
+      "main": [
+        [
+          {
+            "node": "Upload Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Image": {
+      "main": [
+        [
+          {
+            "node": "Gemini AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini AI": {
+      "main": [
+        [
+          {
+            "node": "Build Account Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Account Items": {
+      "main": [
+        [
+          {
+            "node": "Switch Account",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Account": {
+      "main": [
+        [
+          {
+            "node": "Acc 1: Create Container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Acc 2: Create Container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Acc 3: Create Container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Acc 4: Create Container",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Acc 5: Create Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acc 1: Create Container": {
+      "main": [
+        [
+          {
+            "node": "Acc 1: Wait 6s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acc 1: Wait 6s": {
+      "main": [
+        [
+          {
+            "node": "Acc 1: Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acc 2: Create Container": {
+      "main": [
+        [
+          {
+            "node": "Acc 2: Wait 6s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acc 2: Wait 6s": {
+      "main": [
+        [
+          {
+            "node": "Acc 2: Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acc 3: Create Container": {
+      "main": [
+        [
+          {
+            "node": "Acc 3: Wait 6s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acc 3: Wait 6s": {
+      "main": [
+        [
+          {
+            "node": "Acc 3: Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acc 4: Create Container": {
+      "main": [
+        [
+          {
+            "node": "Acc 4: Wait 6s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acc 4: Wait 6s": {
+      "main": [
+        [
+          {
+            "node": "Acc 4: Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acc 5: Create Container": {
+      "main": [
+        [
+          {
+            "node": "Acc 5: Wait 6s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acc 5: Wait 6s": {
+      "main": [
+        [
+          {
+            "node": "Acc 5: Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

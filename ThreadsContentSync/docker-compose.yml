@@ -4,8 +4,7 @@ services:
     container_name: telegram-listener
     restart: unless-stopped
     volumes:
-      - ./session_userbot.session:/app/session_userbot.session
-      - ./.env:/app/.env:ro
+      - .:/app
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

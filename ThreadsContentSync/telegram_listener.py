@@ -1,28 +1,26 @@
 import os
+import re
 import sys
-import shutil
 import asyncio
 import base64
 from collections import deque
 import requests
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
+from telethon.sessions import StringSession
 
-load_dotenv(override=True)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ENV_PATH = os.path.join(BASE_DIR, '.env')
+load_dotenv(ENV_PATH, override=True)
 
 API_ID_RAW = os.getenv('TELEGRAM_API_ID', '').strip()
 API_HASH = os.getenv('TELEGRAM_API_HASH', '').strip()
+SESSION_STRING = os.getenv('TELEGRAM_SESSION_STRING', '').strip()
 TARGET_CHAT_ID_RAW = os.getenv('TARGET_CHAT_ID', '').strip()
 N8N_WEBHOOK_URL = os.getenv('N8N_WEBHOOK_URL', 'http://localhost:5678/webhook/telegram-to-threads').strip()
-SESSION_NAME = os.getenv('SESSION_NAME', 'session_userbot').strip() or 'session_userbot'
 
 if os.getenv('IN_DOCKER') == 'true':
     N8N_WEBHOOK_URL = N8N_WEBHOOK_URL.replace('://localhost', '://host.docker.internal').replace('://127.0.0.1', '://host.docker.internal')
-    src_session = f"{SESSION_NAME}.session"
-    tmp_session = f"/tmp/{SESSION_NAME}.session"
-    if os.path.exists(src_session):
-        shutil.copy2(src_session, tmp_session)
-        SESSION_NAME = f"/tmp/{SESSION_NAME}"
 
 REQUIRE_PHOTO = os.getenv('REQUIRE_PHOTO', 'true').strip().lower() in ('true', '1', 'yes')
 MIN_LENGTH = int(os.getenv('MIN_LENGTH', '0').strip() or '0')
@@ -34,21 +32,49 @@ if not API_ID_RAW or not API_HASH or not TARGET_CHAT_ID_RAW:
     print("[!] Missing required environment variables: TELEGRAM_API_ID, TELEGRAM_API_HASH, TARGET_CHAT_ID")
     exit(1)
 
+if os.getenv('IN_DOCKER') == 'true' and not SESSION_STRING:
+    print("[!] Chưa có TELEGRAM_SESSION_STRING trong file .env!")
+    print("    Hãy đăng nhập lần đầu bằng 1 trong 2 lệnh sau (hệ thống sẽ tự lưu session vào .env):")
+    print("    1. Chạy trực tiếp: python get_chat_ids.py")
+    print("    2. Chạy qua Docker: docker compose run --rm telegram-listener python get_chat_ids.py")
+    sys.exit(1)
+
 API_ID = int(API_ID_RAW)
 TARGET_CHAT_IDS = [int(cid.strip()) for cid in TARGET_CHAT_ID_RAW.strip('[]').split(',') if cid.strip()]
 
-client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+client = TelegramClient(StringSession(SESSION_STRING or None), API_ID, API_HASH)
 message_queue = asyncio.Queue()
 seen_albums = deque(maxlen=500)
 
 
+def save_session_to_env(new_session_str: str):
+    if not new_session_str or not os.path.exists(ENV_PATH):
+        return
+    try:
+        with open(ENV_PATH, 'r', encoding='utf-8') as f:
+            content = f.read()
+        if re.search(r'^TELEGRAM_SESSION_STRING=.*$', content, flags=re.MULTILINE):
+            content = re.sub(
+                r'^TELEGRAM_SESSION_STRING=.*$',
+                f'TELEGRAM_SESSION_STRING={new_session_str}',
+                content,
+                flags=re.MULTILINE
+            )
+        else:
+            content = content.rstrip() + f'\nTELEGRAM_SESSION_STRING={new_session_str}\n'
+        with open(ENV_PATH, 'w', encoding='utf-8') as f:
+            f.write(content)
+        print("[+] Saved TELEGRAM_SESSION_STRING to .env")
+    except Exception as e:
+        print(f"[!] Could not save TELEGRAM_SESSION_STRING to .env: {e}")
+
+
 async def env_watcher():
-    env_path = '.env'
-    last_mtime = os.path.getmtime(env_path) if os.path.exists(env_path) else None
+    last_mtime = os.path.getmtime(ENV_PATH) if os.path.exists(ENV_PATH) else None
     while True:
         await asyncio.sleep(2)
-        if os.path.exists(env_path):
-            current_mtime = os.path.getmtime(env_path)
+        if os.path.exists(ENV_PATH):
+            current_mtime = os.path.getmtime(ENV_PATH)
             if last_mtime is not None and current_mtime != last_mtime:
                 print("[*] Detected .env change! Reloading...")
                 await client.disconnect()
@@ -117,6 +143,9 @@ async def handle_message(event):
 
 
 async def main():
+    if not SESSION_STRING:
+        save_session_to_env(client.session.save())
+    await client.get_dialogs()
     asyncio.create_task(env_watcher())
     asyncio.create_task(queue_worker())
     print(f"Listening on chats {TARGET_CHAT_IDS} -> {N8N_WEBHOOK_URL} (Delay: {QUEUE_DELAY}s)")
